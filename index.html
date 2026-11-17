@@ -558,6 +558,7 @@ nav.tabs button{font-size:.66rem;padding-left:0;padding-right:0}
 .daygrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
 .daygrid button{border:1.5px solid var(--line);background:var(--surface);border-radius:16px;padding:13px;font-weight:800;color:var(--ink);font-size:1rem}
 .daygrid button.on{background:var(--grad);color:#fff;border-color:transparent}
+.skipbox .btn:disabled{opacity:.35}
 </style>
 
 </head>
@@ -584,7 +585,7 @@ nav.tabs button{font-size:.66rem;padding-left:0;padding-right:0}
 // En la versión de GitHub para el iPhone, cambia a false: así se incrustan los vídeos de YouTube.
 const IS_DEMO=false;
 const SEED_DEMO=false; // datos de ejemplo la primera vez (se borran en Ajustes)
-const APP_VERSION="1.28";
+const APP_VERSION="1.30";
 let listScroll=null;
 const APP_DATE="15 nov 2026";
 const KEY="gym-app-v3";
@@ -1530,7 +1531,7 @@ document.addEventListener("click",async e=>{
     const t=new Date(d+"T09:00").getTime(),ex=S.body.find(x=>isoDate(x.t)===d);if(ex)ex[k]=v;else S.body.push({id:"b-"+uid(),t,weight:null,fat:null,muscle:null,[k]:v,src:"manual"});
     persist();closeSheet();render();toast(tr("savedT"));break}
   case "x-open":listScroll={tab,y:scrollY};curEx=b.dataset.ex;render();scrollTo(0,0);break;
-  case "x-exit":{const pcb=planCtx(curEx);if(pcb&&pcb.i>0){S.planRun.idx=pcb.i-1;curEx=pcb.day.ex[pcb.i-1];persist();render();scrollTo(0,0);break}curEx=null;render();const y=listScroll&&listScroll.tab===tab?listScroll.y:0;requestAnimationFrame(()=>scrollTo(0,y));break}
+  case "x-exit":{if(swapPrev){curEx=swapPrev.from;swapPrev=null;render();scrollTo(0,0);break}const pcb=planCtx(curEx);if(pcb&&pcb.i>0){S.planRun.idx=pcb.i-1;curEx=pcb.day.ex[pcb.i-1];persist();render();scrollTo(0,0);break}curEx=null;render();const y=listScroll&&listScroll.tab===tab?listScroll.y:0;requestAnimationFrame(()=>scrollTo(0,y));break}
   case "x-info":openSheet(()=>sInfo(b.dataset.ex));break;
   case "x-custom":openSheet(()=>sCustom(b.dataset.ex));break;
   case "x-inc":case "x-dec":{const ex=exById(curEx),it=getItem(curEx,false),st=it.sets[j],f=b.dataset.f,d=(a==="x-inc"?1:-1)*(f==="kg"?stepOf(ex):isTime(ex)?5:1);
@@ -1546,8 +1547,19 @@ document.addEventListener("click",async e=>{
   case "day-save":{if(dayPick.length!==planDays().length)break;S.planWds=[...dayPick].sort((a,b)=>a-b);S.planSince=isoDate(Date.now());const k=wkKey();if(S.planMoves)delete S.planMoves[k];if(S.planDrops)delete S.planDrops[k];planView=null;persist();closeSheet();render();toast(tr("daysSaved"));break}
   case "plan-move":{const di=+b.dataset.d,w=+b.dataset.w,k=wkKey();S.planMoves=S.planMoves||{};(S.planMoves[k]=S.planMoves[k]||{})[di]=w;persist();planView=null;render();toast(tr("movedT",{w:wdName(w,true)}));break}
   case "plan-drop":{const di=+b.dataset.d,k=wkKey();S.planDrops=S.planDrops||{};(S.planDrops[k]=S.planDrops[k]||{})[di]=true;persist();render();toast(tr("droppedT"));break}
+  case "imp-health":{(async()=>{let txt="";try{txt=await navigator.clipboard.readText()}catch(e){}
+      if(txt&&impResult(importHealth(txt)))return;openSheet(sPaste)})();break}
+  case "imp-paste-go":impResult(importHealth($("#imp-txt").value));break;
+  case "imp-csv":$("#csvin").click();break;
+  case "swap-open":openSheet(sSwap);break;
+  case "swap-pick":{swapPrev={from:curEx,to:b.dataset.ex};curEx=b.dataset.ex;closeSheet();render();scrollTo(0,0);break}
+  case "swap-add":{const r=S.planRun;if(!r||!swapPrev)break;r.swap=r.swap||{};const from=swapPrev.from,to=swapPrev.to;
+    const key=Object.keys(r.swap).find(k=>r.swap[k]===from)||from;if(key===to)delete r.swap[key];else r.swap[key]=to;
+    const s=active();if(s){s.items=s.items.filter(x=>x.ex!==from);if(!s.items.length)S.sessions=S.sessions.filter(x=>x!==s)}delete drafts[from];
+    swapPrev=null;curEx=to;getItem(to,true);S.nowEx=to;persist();render();scrollTo(0,0);toast(tr("swapped"));break}
+  case "reset-body":if(confirm(tr("resetBodyQ"))){S.body=[];persist();closeSheet();render();toast(tr("resetBodyOk"))}break;
   case "plan-start":planStart(+b.dataset.d);break;
-  case "plan-continue":{const r=S.planRun;if(!r)break;const day=planDays()[r.d];tab="plan";planView=r.d;curEx=day.ex[r.idx];render();scrollTo(0,0);break}
+  case "plan-continue":{const r=S.planRun;if(!r)break;const day=planDayEff(r.d);tab="plan";planView=r.d;curEx=day.ex[r.idx];render();scrollTo(0,0);break}
   case "plan-view":planView=+b.dataset.d;render();break;
   case "plan-next":case "plan-skipbtn":planMove();break;
   case "plan-skip":{const pc=planCtx(curEx),s=active();if(s){const it=s.items.find(x=>x.ex===curEx);s.items=s.items.filter(x=>x.ex!==curEx);if(!s.items.length)S.sessions=S.sessions.filter(x=>x!==s)}delete drafts[curEx];rest.end=0;closeSheet();if(pc)planSkipCurrent(pc);else{persist();render()}break}
@@ -1674,10 +1686,10 @@ document.addEventListener("change",async e=>{const t=e.target,st=S.settings;
       persist();render()}catch(err){toast("No se ha podido leer la imagen")}}
   if(t.id==="jsonin"){const f=t.files[0];t.value="";if(f)restoreBackup(f)}
   if(t.id==="csvin"){const f=t.files[0];t.value="";if(!f)return;const n=importWithings(await f.text());
-    if(n<0)toast("No encuentro las columnas de fecha y peso en ese archivo");else{persist();render();toast(n?`${n} registros importados`:"No había registros nuevos")}}
+    if(n<0)toast(tr("csvBad"));else{persist();closeSheet();render();toast(n?tr("csvOk",{n}):tr("csvNone"))}}
 });
 document.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&e.target.classList?.contains("spot")){e.preventDefault();e.target.dispatchEvent(new MouseEvent("click",{bubbles:true}));return}if(e.key==="Escape"&&sheetFn){closeSheet();render()}});
-$$("nav.tabs button").forEach(b=>b.onclick=()=>{curEx=null;if(b.dataset.tab==="plan")planView=null;tab=b.dataset.tab;closeSheet();render();scrollTo(0,0)});
+$$("nav.tabs button").forEach(b=>b.onclick=()=>{curEx=null;swapPrev=null;if(b.dataset.tab==="plan")planView=null;tab=b.dataset.tab;closeSheet();render();scrollTo(0,0)});
 function applyTheme(){const v=S.settings.theme;v?document.documentElement.setAttribute("data-theme",v):document.documentElement.removeAttribute("data-theme")}
 
 /* ================== Idiomas ================== */
@@ -1903,7 +1915,8 @@ function sBodyOne(kind){
   return `<div class="sheet-head"><h1>${tr(kind)}</h1><button class="iconbtn" data-act="close" aria-label="${tr("close")}">✕</button></div>
   <label class="field"><span>${tr(kind)} (${unit})</span><input id="b1-v" inputmode="decimal" value="${cur?esc(decS(cur[kind])):""}"></label>
   <label class="field"><span>${tr("date")}</span><input id="b1-d" type="date" value="${isoDate(Date.now())}"></label>
-  <button class="btn primary block" data-act="b1-save" data-k="${kind}">${tr("save")}</button>`;
+  <button class="btn primary block" data-act="b1-save" data-k="${kind}">${tr("save")}</button>
+  ${kind!=="muscle"?`<button class="btn ghost block" style="margin-top:8px" data-act="imp-health">${tr("impHealth")}</button>`:""}`;
 }
 function vTrain(){
   const xs=bodyArea?S.exercises.filter(x=>musclesOf(x).includes(bodyArea)):[];
@@ -1966,7 +1979,7 @@ function vExercise(exId,back=true){
     <div class="xchart">${miniArea(h.slice(0,40).reverse().map(x=>({v:isBW(ex)||isTime(ex)?num(x.best.reps):x.max})),isBW(ex)||isTime(ex)?null:gk)}</div></div>
   ${planNoteBox(exId)}
   ${ex.e==="barra"?`<div class="barpick"><span>${tr("barW")}</span><div class="barbtns">${[[20,"20 kg"],[15,"15 kg"],[10,"10 kg"],[0,tr("noBar")]].map(([v,l])=>`<button aria-pressed="${(ex.bar??20)===v}" data-act="x-bar" data-v="${v}">${l}</button>`).join("")}</div><p class="small muted">${tr("barHint")}</p></div>`:""}
-  ${started?`<button class="btn block startbtn end" data-act="x-save">${tr("endW")}</button>`:`<button class="btn primary block startbtn" data-act="x-start">${tr("startW")}</button>`}
+  ${swapBanner(exId)}${swapPrev&&swapPrev.to===exId?`<button class="btn primary block startbtn" data-act="swap-add">${tr("addW")}</button>`:started?`<button class="btn block startbtn end" data-act="x-save">${tr("endW")}</button>`:`<button class="btn primary block startbtn" data-act="x-start">${tr("startW")}</button>`}
   <div class="xsets ${started?"":"locked"}" ${started?"":'aria-disabled="true"'}>${rows}${started?"":`<div class="lockmsg">${tr("lockMsg")}</div>`}</div>
   ${k<0&&started?`<p class="alldone">${tr("allDone")}</p>`:""}
   ${started?`<button class="btn ghost block" style="margin-top:12px" data-act="x-addset" ${k<0?"disabled":""}>${tr("addSet")}</button>`:""}
@@ -2054,6 +2067,7 @@ function sSettings(){const st=S.settings,nOk="Notification" in window;
    <div class="setting"><span>${tr("theme")}</span><select id="st-theme"><option value="">${tr("auto")}</option><option value="light" ${st.theme==="light"?"selected":""}>${tr("light")}</option><option value="dark" ${st.theme==="dark"?"selected":""}>${tr("dark")}</option></select></div>
   </div>
   <button class="btn ghost block" style="margin-top:10px" data-act="test-rest">${tr("testSound")}</button>
+  ${impSection()}
   <h2>${tr("backupH")}</h2>
   <div class="card"><p class="small muted">${tr("backupTxt")}</p>
   <button class="btn primary block" style="margin-top:10px" data-act="backup" data-photos="1">${tr("backupPh")}</button>
@@ -2062,6 +2076,7 @@ function sSettings(){const st=S.settings,nOk="Notification" in window;
   ${S.lastBackup?`<p class="small muted" style="margin-top:8px">${tr("lastBackup",{x:dl(S.lastBackup,{day:"numeric",month:"long",year:"numeric"})})}</p>`:""}</div>
   <h2>${tr("dataH")}</h2>
   ${S.demo?`<button class="btn primary block" data-act="clear-demo">${tr("clearDemo")}</button>`:""}
+  <button class="btn ghost block" style="margin-top:8px" data-act="reset-body">${tr("resetBody")}</button>
   <button class="btn ghost block" style="margin-top:8px;color:var(--accent)" data-act="wipe">${tr("wipe")}</button>
   <p class="version"><img src="${APP_ICON}" alt="" class="appicon"><br>My Fitness Journey · ${tr("version")} ${APP_VERSION} · ${APP_DATE}</p>`;
 }
@@ -2131,7 +2146,7 @@ const planSt=id=>(S.planRun&&S.planRun.st||{})[id];
 function planMark(id,v){if(!S.planRun)return;S.planRun.st=S.planRun.st||{};S.planRun.st[id]=v}
 function planStart(d){const day=planDays()[d];if(!day)return;S.planRun={d,idx:0,st:{}};planView=d;tab="plan";curEx=day.ex[0];persist();render();scrollTo(0,0)}
 function planFinish(pc){const st=S.planRun&&S.planRun.st||{},ex=pc.day.ex;
-  S.planDone={date:isoDate(Date.now()),d:pc.d,n:ex.filter(id=>st[id]==="done").length,k:ex.filter(id=>st[id]==="skip").length,st:{...st}};
+  S.planDone={date:isoDate(Date.now()),d:pc.d,n:ex.filter(id=>st[id]==="done").length,k:ex.filter(id=>st[id]==="skip").length,st:{...st},ex:[...ex]};
   S.planNext=(pc.d+1)%planDays().length;S.planRun=null;curEx=null;planView=null;persist();render();scrollTo(0,0);
   openSheet(()=>sCongrats(S.planDone.n));$("#sheet .sheet").classList.add("modal")}
 function planGoTo(pc,i){S.planRun.idx=i;curEx=pc.day.ex[i];persist();render();scrollTo(0,0)}
@@ -2151,7 +2166,7 @@ function planDoneToday(){return S.planDone&&S.planDone.date===isoDate(Date.now()
 function doneCard(){const pd=S.planDone,day=planDays()[pd.d],nx=planDays()[planNext()];
   return `<div class="donecard"><div class="confetti">🎉✨💖✨🎉</div><h2>${tr("doneTitle")}</h2><p class="donebig">${tr("doneTxt")}</p>
    <p class="donesub">${tr(pd.n===1?"doneSub1":"doneSub",{d:day?esc(dayName(day)):"",n:pd.n})}${pd.k?tr(pd.k===1?"doneSkip1":"doneSkip",{k:pd.k}):""}</p>
-   ${day?`<div class="planthumbs center">${day.ex.map(id=>{const v=(pd.st||{})[id];return `<span class="${v==="done"?"done":v==="skip"?"skip":""}">${thumb(id)}</span>`}).join("")}</div>`:""}
+   ${day?`<div class="planthumbs center">${(pd.ex||day.ex).map(id=>{const v=(pd.st||{})[id];return `<span class="${v==="done"?"done":v==="skip"?"skip":""}">${thumb(id)}</span>`}).join("")}</div>`:""}
    ${nx?`<p class="donenext">${tr("nextDay",{d:esc(dayName(nx))})}</p>`:""}</div>`}
 function planHomeCard(){const ds=planDays();if(!ds.length)return "";if(planDoneToday())return doneCard();const r=S.planRun,di=r?r.d:planNext(),day=ds[di];
   return `<div class="card plancard"><div class="row" style="justify-content:space-between;align-items:baseline"><p class="lbl">${tr("planToday")} 📋</p><span class="small muted">${tr("day",{n:di+1})}</span></div>
@@ -2276,7 +2291,7 @@ function missedDays(){return []}
 function missedCard(){return ""}
 function daysLine(){return ""}
 function planFinish(pc){const st=S.planRun&&S.planRun.st||{},ex=pc.day.ex;
-  S.planDone={date:isoDate(Date.now()),d:pc.d,n:ex.filter(id=>st[id]==="done").length,k:ex.filter(id=>st[id]==="skip").length,st:{...st}};
+  S.planDone={date:isoDate(Date.now()),d:pc.d,n:ex.filter(id=>st[id]==="done").length,k:ex.filter(id=>st[id]==="skip").length,st:{...st},ex:[...ex]};
   S.planNext=(pc.d+1)%planDays().length;S.planRun=null;curEx=null;planView=null;persist();render();scrollTo(0,0);
   openSheet(()=>sCongrats(S.planDone.n));$("#sheet .sheet").classList.add("modal")}
 function planHomeCard(){const ds=planDays();if(!ds.length)return "";if(planDoneToday())return doneCard();const r=S.planRun,di=r?r.d:planNextFn(),day=ds[di];
@@ -2293,11 +2308,69 @@ function vPlan(){const ds=planDays(),nx=planNextFn(),r=S.planRun;if(planView==nu
     return `<button class="plancardex ${st?"st-"+st:""}" data-act="x-info" data-ex="${id}">${thumb(id,"lg")}<span class="pnum">${i+1}</span><span class="pname">${esc(ex.n)}</span><span class="ptgt">${sr}${c?` · ⏱ ${c.rt}`:""}${noteTxt(c)?`<br><small>💡 ${esc(noteTxt(c))}</small>`:""}</span>${st||now?`<span class="pst ${st||"now"}">${st==="done"?tr("stDone"):st==="skip"?tr("stSkip"):tr("stNow")}</span>`:""}</button>`}).join("")}</div>
   <div class="planstart"><button class="btn primary block" data-act="${running?"plan-continue":"plan-start"}" data-d="${planView}">${running?tr("contPlan",{a:r.idx+1,n:day.ex.length}):planView===nx?tr("startPlan"):tr("startDay",{n:planView+1})}</button></div>`}
 
+/* ================== Importar medidas (Salud / Withings) ================== */
+Object.assign(TR.es,{impH:"Importar medidas",impTxt:"Trae tu peso y tu grasa de la báscula Withings, a través de la app Salud del iPhone y un atajo.",impHealth:"📲 Importar desde Salud",impCsv:"📄 Importar archivo de Withings (CSV)",impPasteT:"Pega los datos del atajo",impPasteSub:"Si no se han leído solos, mantén pulsado el recuadro, pulsa Pegar y luego Importar.",impGo:"Importar",impNone:"No he encontrado datos. ¿Has ejecutado el atajo antes?",impOk:"{n} medidas importadas 💕",impSame:"Ya tenías estas medidas",csvBad:"No encuentro las columnas de fecha y peso en ese archivo",csvOk:"{n} registros importados",csvNone:"No había registros nuevos"});
+Object.assign(TR.en,{impH:"Import measurements",impTxt:"Bring in your weight and body fat from your Withings scale, through the iPhone Health app and a shortcut.",impHealth:"📲 Import from Health",impCsv:"📄 Import Withings file (CSV)",impPasteT:"Paste the shortcut data",impPasteSub:"If it wasn't read automatically, press and hold the box, tap Paste and then Import.",impGo:"Import",impNone:"No data found. Did you run the shortcut first?",impOk:"{n} measurements imported 💕",impSame:"You already had these measurements",csvBad:"I can't find the date and weight columns in that file",csvOk:"{n} records imported",csvNone:"No new records"});
+Object.assign(TR.zh,{impH:"导入身体数据",impTxt:"通过 iPhone 的“健康”应用和一个快捷指令，导入 Withings 体重秤的体重和体脂。",impHealth:"📲 从“健康”导入",impCsv:"📄 导入 Withings 文件（CSV）",impPasteT:"粘贴快捷指令的数据",impPasteSub:"如果没有自动读取，请长按方框，点“粘贴”，再点“导入”。",impGo:"导入",impNone:"没有找到数据。你先运行快捷指令了吗？",impOk:"已导入 {n} 条数据 💕",impSame:"这些数据已经有了",csvBad:"在这个文件里找不到日期和体重列",csvOk:"已导入 {n} 条记录",csvNone:"没有新记录"});
+// Formato del atajo: una línea por dato -> tipo;valor;fecha  (p. ej. "peso;66.5;2026-11-16T08:12:00+01:00")
+function importHealth(txt){let n=0,seen=0;
+  for(const raw of String(txt||"").split(/\r?\n/)){const line=raw.trim();if(!line)continue;
+    const low=norm(line),k=/(peso|weight|体重|body ?mass)/.test(low)&&!/(lean|magra|grasa|fat)/.test(low)?"weight":/(grasa|fat|体脂)/.test(low)?"fat":/(muscul|muscle|肌肉)/.test(low)?"muscle":null;if(!k)continue;
+    const parts=line.split(/[;\t|]/);let v=NaN,t=NaN;
+    for(const p of parts.slice(1)){const q=p.trim();if(isNaN(v)){const m=q.match(/^-?\d+(?:[.,]\d+)?/);if(m&&!/^\d{4}-\d{2}-\d{2}/.test(q)){v=parseFloat(m[0].replace(",","."));continue}}if(isNaN(t)){const d=Date.parse(q.replace(" ","T"));if(isFinite(d))t=d}}
+    if(!(v>0))continue;if(k==="fat"&&v<1)v=Math.round(v*1000)/10;v=Math.round(v*10)/10;if(!isFinite(t))t=Date.now();
+    let e=S.body.find(x=>isoDate(x.t)===isoDate(t));
+    if(e&&e[k]===v){seen++;continue}
+    if(e){e[k]=v}else{S.body.push({id:"b-"+uid(),t,weight:null,fat:null,muscle:null,[k]:v,src:"salud"})}n++}
+  return {n,seen}}
+function sPaste(){return `<div class="sheet-head"><div><h1>${tr("impPasteT")}</h1><p class="muted">${tr("impPasteSub")}</p></div><button class="iconbtn" data-act="close" aria-label="${tr("close")}">✕</button></div>
+  <textarea id="imp-txt" rows="6" style="width:100%;background:var(--surface);border:1.5px solid var(--line);border-radius:16px;padding:12px;font:inherit;color:inherit" placeholder="peso;66.5;2026-11-16"></textarea>
+  <button class="btn primary block" style="margin-top:12px" data-act="imp-paste-go">${tr("impGo")}</button>`}
+function impResult(r){if(!r.n&&!r.seen){toast(tr("impNone"));return false}persist();closeSheet();render();toast(r.n?tr("impOk",{n:r.n}):tr("impSame"));return true}
+function impSection(){return `<h2>${tr("impH")}</h2><div class="card"><p class="small muted">${tr("impTxt")}</p>
+  <button class="btn primary block" style="margin-top:10px" data-act="imp-health">${tr("impHealth")}</button>
+  <button class="btn ghost block" style="margin-top:8px" data-act="imp-csv">${tr("impCsv")}</button></div>`}
+
+/* ================== Plan N, cambiar ejercicio, reset de medidas ================== */
+Object.assign(TR.es,{day:"Plan {n}",planToday:"Tu siguiente plan",startDay:"▶ Empezar plan {n}",nextDay:"Siguiente: {d}",swapBtn:"🔄 Cambiar ejercicio",swapTitle:"Cambiar ejercicio",swapSub:"Solo se cambia en esta sesión. Tu plan no se modifica.",addW:"➕ Añadir entreno",swapped:"Ejercicio cambiado 💕",inPlan:"Ya está en el plan",replaces:"🔄 Sustituye a {x}",resetBody:"Borrar mis medidas (peso, grasa y músculo)",resetBodyQ:"¿Borrar todas tus medidas de peso, grasa y músculo? No se puede deshacer.",resetBodyOk:"Medidas borradas"});
+Object.assign(TR.en,{day:"Plan {n}",planToday:"Your next plan",startDay:"▶ Start plan {n}",nextDay:"Next: {d}",swapBtn:"🔄 Swap exercise",swapTitle:"Swap exercise",swapSub:"It only changes for this session. Your plan stays the same.",addW:"➕ Add workout",swapped:"Exercise swapped 💕",inPlan:"Already in the plan",replaces:"🔄 Replaces {x}",resetBody:"Delete my measurements (weight, fat and muscle)",resetBodyQ:"Delete all your weight, body fat and muscle measurements? This can't be undone.",resetBodyOk:"Measurements deleted"});
+Object.assign(TR.zh,{day:"计划 {n}",planToday:"下一个计划",startDay:"▶ 开始计划 {n}",nextDay:"下一个：{d}",swapBtn:"🔄 更换练习",swapTitle:"更换练习",swapSub:"只在本次训练中更换，你的计划不会改变。",addW:"➕ 加入训练",swapped:"练习已更换 💕",inPlan:"已在计划中",replaces:"🔄 替换 {x}",resetBody:"删除我的身体数据（体重、体脂、肌肉）",resetBodyQ:"确定删除所有体重、体脂和肌肉数据吗？此操作无法撤销。",resetBodyOk:"身体数据已删除"});
+let swapPrev=null;
+// Día del plan con los cambios de esta sesión aplicados
+function planDayEff(d){const base=planDays()[d],r=S.planRun;if(!base)return null;if(!(r&&r.d===d&&r.swap&&Object.keys(r.swap).length))return base;
+  const ex=base.ex.map(id=>r.swap[id]||id),cfg={...(base.cfg||{})};
+  for(const [o,n] of Object.entries(r.swap)){const c=base.cfg&&base.cfg[o],nx=exById(n);cfg[n]={sets:nx.sets,rmin:nx.rmin,rmax:nx.rmax,rest:c?c.rest:75,rt:c?c.rt:"60–90 s"}}
+  return {...base,ex,cfg}}
+function planCtx(exId){const r=S.planRun;if(!r||tab!=="plan")return null;const day=planDayEff(r.d);if(!day)return null;const i=day.ex.indexOf(exId);return i<0?null:{i,n:day.ex.length,day,d:r.d}}
+function planSkipBtn(exId){const pc=planCtx(exId);if(!pc)return "";const s=active(),it=s&&s.items.find(x=>x.ex===exId),all=it&&it.sets.length&&it.sets.every(x=>x.done),any=it&&it.sets.some(x=>x.done);
+  return `<div class="skipbox"><button class="btn ghost block" data-act="plan-skipbtn" ${all?"disabled":""}>${tr("skipBtn")}</button>
+   <button class="btn ghost block" style="margin-top:8px" data-act="swap-open" ${any?"disabled":""}>${tr("swapBtn")}</button>${all?"":`<p class="small muted">${tr("skipHint")}</p>`}</div>`}
+function sSwap(){const pc=planCtx(curEx);const inPlan=new Set(pc?pc.day.ex:[]);
+  return `<div class="sheet-head"><div><h1>${tr("swapTitle")}</h1><p class="muted">${tr("swapSub")}</p></div><button class="iconbtn" data-act="close" aria-label="${tr("close")}">✕</button></div>
+  ${GOALS.map(g=>{const xs=S.exercises.filter(x=>goalsOf(x).includes(g));if(!xs.length)return "";return `<div class="grouphead">${esc(goalName(g))}</div><div class="list">${xs.map(x=>{const dis=inPlan.has(x.id);
+    return `<button class="it" data-act="swap-pick" data-ex="${x.id}" ${dis?"disabled":""}>${thumb(x.id)}<span class="grow"><b>${esc(x.n)}</b><span class="meta">${dis?tr("inPlan"):tgtTxt(x)}</span></span><span class="chev" aria-hidden="true">›</span></button>`}).join("")}</div>`}).join("")}`}
+function planHomeCard(){const ds=planDays();if(!ds.length)return "";if(planDoneToday())return doneCard();const r=S.planRun,di=r?r.d:planNextFn(),day=r?planDayEff(di):ds[di];
+  return `<div class="card plancard"><div class="row" style="justify-content:space-between;align-items:baseline"><p class="lbl">${tr("planToday")} 📋</p><span class="small muted">${tr("day",{n:di+1})}</span></div>
+   <p class="planname">${esc(dayName(day))}</p>
+   <div class="planthumbs">${day.ex.map(id=>{const st=r?planSt(id):null;return `<span class="${st==="done"?"done":st==="skip"?"skip":""}">${thumb(id)}</span>`}).join("")}</div>
+   <button class="btn primary block planbtn" data-act="${r?"plan-continue":"plan-start"}" data-d="${di}">${r?tr("contPlan",{a:r.idx+1,n:day.ex.length}):tr("startDay",{n:di+1})}</button></div>`}
+function vPlan(){const ds=planDays(),nx=planNextFn(),r=S.planRun;if(planView==null)planView=r?r.d:nx;const running=r&&r.d===planView,day=running?planDayEff(planView):ds[planView];
+  return `${planDoneToday()?doneCard():""}
+  <div class="planpills">${ds.map((d,i)=>{const ok=i<nx&&!(r&&r.d===i);return `<button class="${i===planView?"on":""} ${ok?"ok":""}" data-act="plan-view" data-d="${i}">${ok?"✓":tr("day",{n:i+1})}</button>`}).join("")}</div>
+  <p class="plansub">${tr("day",{n:planView+1})}</p><h1 class="plantitle">${esc(dayName(day))}</h1>
+  <div class="planinfo">⚡ ${tr("planSub",{n:day.ex.length})}</div>
+  <div class="planlist">${day.ex.map((id,i)=>{const ex=exById(id),c=cfgOf(day,id),st=running?planSt(id):null,now=running&&i===r.idx&&!st;const sr=c?tr("setsReps",{s:c.sets,r:repTxt(Object.assign({},ex,c))}):tr("setsReps",{s:ex.sets,r:repTxt(ex)});
+    return `<button class="plancardex ${st?"st-"+st:""}" data-act="x-info" data-ex="${id}">${thumb(id,"lg")}<span class="pnum">${i+1}</span><span class="pname">${esc(ex.n)}</span><span class="ptgt">${sr}${c?` · ⏱ ${c.rt}`:""}${noteTxt(c)?`<br><small>💡 ${esc(noteTxt(c))}</small>`:""}</span>${st||now?`<span class="pst ${st||"now"}">${st==="done"?tr("stDone"):st==="skip"?tr("stSkip"):tr("stNow")}</span>`:""}</button>`}).join("")}</div>
+  <div class="planstart"><button class="btn primary block" data-act="${running?"plan-continue":"plan-start"}" data-d="${planView}">${running?tr("contPlan",{a:r.idx+1,n:day.ex.length}):tr("startDay",{n:planView+1})}</button></div>`}
+function swapBanner(exId){return swapPrev&&swapPrev.to===exId?`<div class="plannote"><b>${tr("replaces",{x:esc(exById(swapPrev.from).n)})}</b><span>${tr("swapSub")}</span></div>`:""}
+
 /* ---------- Arranque ---------- */
 S=load();
 if(!S){S=blank();persist()}
 // Reinicio único: borra todos los datos de ejemplo y el progreso para empezar de cero
 if(S.resetV!==1){try{idb.clear()}catch(e){}const lg=S.settings&&S.settings.lang;S=blank();if(lg)S.settings.lang=lg;S.resetV=1;persist()}
+// Borrado único de medidas (peso, grasa, músculo) pedido en la 1.30
+if(S.bodyResetV!==1){S.body=[];S.bodyResetV=1;persist()}
 (function syncEx(){const keep={};for(const x of S.exercises)keep[x.id]=x;
   S.exercises=[...DEFAULT_EX.map(d=>{const o=keep[d.id]||{};return Object.assign(JSON.parse(JSON.stringify(d)),{yt:o.yt,bar:o.bar,goalKg:o.goalKg})}),...S.exercises.filter(x=>x.id.startsWith("c-"))];
   S.routines=JSON.parse(JSON.stringify(PLAN5));if(S.planVer!==2){S.planRun=null;S.planDone=null;S.planNext=0;S.planLog={};S.planMoves={};S.planDrops={};S.planVer=2}if(!S.planSince)S.planSince=isoDate(Date.now())})();
