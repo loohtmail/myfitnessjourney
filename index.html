@@ -559,6 +559,14 @@ nav.tabs button{font-size:.66rem;padding-left:0;padding-right:0}
 .daygrid button{border:1.5px solid var(--line);background:var(--surface);border-radius:16px;padding:13px;font-weight:800;color:var(--ink);font-size:1rem}
 .daygrid button.on{background:var(--grad);color:#fff;border-color:transparent}
 .skipbox .btn:disabled{opacity:.35}
+
+body.locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
+.scrim{overscroll-behavior:contain;touch-action:none}
+.sheet{overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+.plancardex{display:block}
+.pswap{position:absolute;right:12px;top:12px;z-index:2;border:0;border-radius:999px;padding:7px 12px;font-weight:800;font-size:.84rem;background:rgba(255,255,255,.92);color:var(--accent);box-shadow:0 4px 12px rgba(0,0,0,.18);cursor:pointer}
+.pswap:disabled{opacity:.5;cursor:default}
+.pname{right:110px}
 </style>
 
 </head>
@@ -585,7 +593,7 @@ nav.tabs button{font-size:.66rem;padding-left:0;padding-right:0}
 // En la versión de GitHub para el iPhone, cambia a false: así se incrustan los vídeos de YouTube.
 const IS_DEMO=false;
 const SEED_DEMO=false; // datos de ejemplo la primera vez (se borran en Ajustes)
-const APP_VERSION="1.30";
+const APP_VERSION="1.31";
 let listScroll=null;
 const APP_DATE="15 nov 2026";
 const KEY="gym-app-v3";
@@ -795,7 +803,7 @@ function render(){
   $$("nav.tabs button").forEach(b=>b.dataset.tab===tab?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current"));
   if(tab==="ejercicio")curEx=nowItem()?.ex||null;
   const te=$("#tab-ej");if(te){const on=!!nowItem();te.classList.toggle("live",on);te.classList.toggle("locked",!on)}
-  $("#view").innerHTML=tab==="plan"?(S.planRun&&curEx?vExercise(curEx,true):vPlan()):tab==="ejercicio"?(curEx?vExercise(curEx,false):vLocked()):["inicio","entrenar","objetivos"].includes(tab)&&curEx?vExercise(curEx):tab==="inicio"?vCover():tab==="entrenar"?vTrain():tab==="objetivos"?vGoals():vProgress();
+  $("#view").innerHTML=tab==="plan"?((S.planRun||swapPrev)&&curEx?vExercise(curEx,true):vPlan()):tab==="ejercicio"?(curEx?vExercise(curEx,false):vLocked()):["inicio","entrenar","objetivos"].includes(tab)&&curEx?vExercise(curEx):tab==="inicio"?vCover():tab==="entrenar"?vTrain():tab==="objetivos"?vGoals():vProgress();
   if(sheetFn){const sh=$("#sheet .sheet");if(sh){const st=sh.scrollTop;sh.innerHTML=sheetFn();sh.scrollTop=st}}
   renderRest();hydrate();
   if(tab==="progreso"&&progTab==="fotos")bindCompare();
@@ -1531,7 +1539,7 @@ document.addEventListener("click",async e=>{
     const t=new Date(d+"T09:00").getTime(),ex=S.body.find(x=>isoDate(x.t)===d);if(ex)ex[k]=v;else S.body.push({id:"b-"+uid(),t,weight:null,fat:null,muscle:null,[k]:v,src:"manual"});
     persist();closeSheet();render();toast(tr("savedT"));break}
   case "x-open":listScroll={tab,y:scrollY};curEx=b.dataset.ex;render();scrollTo(0,0);break;
-  case "x-exit":{if(swapPrev){curEx=swapPrev.from;swapPrev=null;render();scrollTo(0,0);break}const pcb=planCtx(curEx);if(pcb&&pcb.i>0){S.planRun.idx=pcb.i-1;curEx=pcb.day.ex[pcb.i-1];persist();render();scrollTo(0,0);break}curEx=null;render();const y=listScroll&&listScroll.tab===tab?listScroll.y:0;requestAnimationFrame(()=>scrollTo(0,y));break}
+  case "x-exit":{if(swapPrev){const c=swapPrev;swapPrev=null;curEx=c.src==="ex"?c.from:null;render();openSheet(sSwap);break}const pcb=planCtx(curEx);if(pcb&&pcb.i>0){S.planRun.idx=pcb.i-1;curEx=pcb.day.ex[pcb.i-1];persist();render();scrollTo(0,0);break}curEx=null;render();const y=listScroll&&listScroll.tab===tab?listScroll.y:0;requestAnimationFrame(()=>scrollTo(0,y));break}
   case "x-info":openSheet(()=>sInfo(b.dataset.ex));break;
   case "x-custom":openSheet(()=>sCustom(b.dataset.ex));break;
   case "x-inc":case "x-dec":{const ex=exById(curEx),it=getItem(curEx,false),st=it.sets[j],f=b.dataset.f,d=(a==="x-inc"?1:-1)*(f==="kg"?stepOf(ex):isTime(ex)?5:1);
@@ -1551,12 +1559,13 @@ document.addEventListener("click",async e=>{
       if(txt&&impResult(importHealth(txt)))return;openSheet(sPaste)})();break}
   case "imp-paste-go":impResult(importHealth($("#imp-txt").value));break;
   case "imp-csv":$("#csvin").click();break;
-  case "swap-open":openSheet(sSwap);break;
-  case "swap-pick":{swapPrev={from:curEx,to:b.dataset.ex};curEx=b.dataset.ex;closeSheet();render();scrollTo(0,0);break}
-  case "swap-add":{const r=S.planRun;if(!r||!swapPrev)break;r.swap=r.swap||{};const from=swapPrev.from,to=swapPrev.to;
-    const key=Object.keys(r.swap).find(k=>r.swap[k]===from)||from;if(key===to)delete r.swap[key];else r.swap[key]=to;
-    const s=active();if(s){s.items=s.items.filter(x=>x.ex!==from);if(!s.items.length)S.sessions=S.sessions.filter(x=>x!==s)}delete drafts[from];
-    swapPrev=null;curEx=to;getItem(to,true);S.nowEx=to;persist();render();scrollTo(0,0);toast(tr("swapped"));break}
+  case "swap-open":{const pc=planCtx(curEx);if(!pc)break;swapCtx={d:pc.d,i:pc.i,from:curEx,src:"ex",y:scrollY};openSheet(sSwap);break}
+  case "swap-slot":{const day=planDayEff(planView);swapCtx={d:planView,i:+b.dataset.i,from:day.ex[+b.dataset.i],src:"plan",y:scrollY};openSheet(sSwap);break}
+  case "swap-pick":{if(!swapCtx)break;swapPrev={...swapCtx,to:b.dataset.ex};curEx=b.dataset.ex;closeSheet();render();scrollTo(0,0);break}
+  case "swap-add":{const c=swapPrev;if(!c)break;swapApply(c,c.to);swapPrev=null;swapCtx=null;
+    if(c.src==="ex"&&S.planRun&&S.planRun.d===c.d){curEx=c.to;getItem(c.to,true);S.nowEx=c.to;persist();render();scrollTo(0,0)}
+    else{curEx=null;planView=c.d;persist();render();requestAnimationFrame(()=>scrollTo(0,c.y||0))}
+    toast(tr("swapped"));break}
   case "reset-body":if(confirm(tr("resetBodyQ"))){S.body=[];persist();closeSheet();render();toast(tr("resetBodyOk"))}break;
   case "plan-start":planStart(+b.dataset.d);break;
   case "plan-continue":{const r=S.planRun;if(!r)break;const day=planDayEff(r.d);tab="plan";planView=r.d;curEx=day.ex[r.idx];render();scrollTo(0,0);break}
@@ -1689,7 +1698,7 @@ document.addEventListener("change",async e=>{const t=e.target,st=S.settings;
     if(n<0)toast(tr("csvBad"));else{persist();closeSheet();render();toast(n?tr("csvOk",{n}):tr("csvNone"))}}
 });
 document.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&e.target.classList?.contains("spot")){e.preventDefault();e.target.dispatchEvent(new MouseEvent("click",{bubbles:true}));return}if(e.key==="Escape"&&sheetFn){closeSheet();render()}});
-$$("nav.tabs button").forEach(b=>b.onclick=()=>{curEx=null;swapPrev=null;if(b.dataset.tab==="plan")planView=null;tab=b.dataset.tab;closeSheet();render();scrollTo(0,0)});
+$$("nav.tabs button").forEach(b=>b.onclick=()=>{curEx=null;swapPrev=null;swapCtx=null;if(b.dataset.tab==="plan")planView=null;tab=b.dataset.tab;closeSheet();render();scrollTo(0,0)});
 function applyTheme(){const v=S.settings.theme;v?document.documentElement.setAttribute("data-theme",v):document.documentElement.removeAttribute("data-theme")}
 
 /* ================== Idiomas ================== */
@@ -2292,7 +2301,7 @@ function missedCard(){return ""}
 function daysLine(){return ""}
 function planFinish(pc){const st=S.planRun&&S.planRun.st||{},ex=pc.day.ex;
   S.planDone={date:isoDate(Date.now()),d:pc.d,n:ex.filter(id=>st[id]==="done").length,k:ex.filter(id=>st[id]==="skip").length,st:{...st},ex:[...ex]};
-  S.planNext=(pc.d+1)%planDays().length;S.planRun=null;curEx=null;planView=null;persist();render();scrollTo(0,0);
+  S.planNext=(pc.d+1)%planDays().length;S.planRun=null;S.planPre=null;curEx=null;planView=null;persist();render();scrollTo(0,0);
   openSheet(()=>sCongrats(S.planDone.n));$("#sheet .sheet").classList.add("modal")}
 function planHomeCard(){const ds=planDays();if(!ds.length)return "";if(planDoneToday())return doneCard();const r=S.planRun,di=r?r.d:planNextFn(),day=ds[di];
   return `<div class="card plancard"><div class="row" style="justify-content:space-between;align-items:baseline"><p class="lbl">${tr("planToday")} 📋</p><span class="small muted">${tr("day",{n:di+1})}</span></div>
@@ -2363,6 +2372,42 @@ function vPlan(){const ds=planDays(),nx=planNextFn(),r=S.planRun;if(planView==nu
     return `<button class="plancardex ${st?"st-"+st:""}" data-act="x-info" data-ex="${id}">${thumb(id,"lg")}<span class="pnum">${i+1}</span><span class="pname">${esc(ex.n)}</span><span class="ptgt">${sr}${c?` · ⏱ ${c.rt}`:""}${noteTxt(c)?`<br><small>💡 ${esc(noteTxt(c))}</small>`:""}</span>${st||now?`<span class="pst ${st||"now"}">${st==="done"?tr("stDone"):st==="skip"?tr("stSkip"):tr("stNow")}</span>`:""}</button>`}).join("")}</div>
   <div class="planstart"><button class="btn primary block" data-act="${running?"plan-continue":"plan-start"}" data-d="${planView}">${running?tr("contPlan",{a:r.idx+1,n:day.ex.length}):tr("startDay",{n:planView+1})}</button></div>`}
 function swapBanner(exId){return swapPrev&&swapPrev.to===exId?`<div class="plannote"><b>${tr("replaces",{x:esc(exById(swapPrev.from).n)})}</b><span>${tr("swapSub")}</span></div>`:""}
+
+/* ================== Cambiar ejercicio desde la lista del plan + scroll del popup ================== */
+Object.assign(TR.es,{swapShort:"🔄 Cambiar"});Object.assign(TR.en,{swapShort:"🔄 Swap"});Object.assign(TR.zh,{swapShort:"🔄 更换"});
+let swapCtx=null,lockY=0;
+function lockBody(){const b=document.body;if(b.classList.contains("locked"))return;lockY=scrollY;b.style.top=(-lockY)+"px";b.classList.add("locked")}
+function unlockBody(){const b=document.body;if(!b.classList.contains("locked"))return;b.classList.remove("locked");b.style.top="";scrollTo(0,lockY)}
+function openSheet(fn){sheetFn=fn;$("#sheet").innerHTML=`<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">${fn()}</div></div>`;$("#scrim").onclick=e=>{if(e.target.id==="scrim")closeSheet()};hydrate($("#sheet"));lockBody();
+  const sc=$("#scrim");sc.addEventListener("touchmove",e=>{if(!e.target.closest(".sheet"))e.preventDefault()},{passive:false})}
+function closeSheet(){sheetFn=null;$("#sheet").innerHTML="";unlockBody()}
+function planPreSwap(d){return S.planPre&&S.planPre.d===d?S.planPre.swap||{}:null}
+function planDayEff(d){const base=planDays()[d],r=S.planRun;if(!base)return null;
+  const sw=r&&r.d===d?(r.swap||{}):(planPreSwap(d)||{});if(!Object.keys(sw).length)return base;
+  const ex=base.ex.map(id=>sw[id]||id),cfg={...(base.cfg||{})};
+  for(const [o,n] of Object.entries(sw)){const c=base.cfg&&base.cfg[o],nx=exById(n);cfg[n]={sets:nx.sets,rmin:nx.rmin,rmax:nx.rmax,rest:c?c.rest:75,rt:c?c.rt:"60–90 s"}}
+  return {...base,ex,cfg}}
+function planStart(d){const day=planDays()[d];if(!day)return;const sw=planPreSwap(d)||{};S.planPre=null;S.planRun={d,idx:0,st:{},swap:sw};planView=d;tab="plan";curEx=planDayEff(d).ex[0];persist();render();scrollTo(0,0)}
+function sSwap(){const c=swapCtx,day=c?planDayEff(c.d):null,inPlan=new Set(day?day.ex:[]);
+  return `<div class="sheet-head"><div><h1>${tr("swapTitle")}</h1><p class="muted">${c?tr("replaces",{x:esc(exById(c.from).n)})+". ":""}${tr("swapSub")}</p></div><button class="iconbtn" data-act="close" aria-label="${tr("close")}">✕</button></div>
+  ${GOALS.map(g=>{const xs=S.exercises.filter(x=>goalsOf(x).includes(g));if(!xs.length)return "";return `<div class="grouphead">${esc(goalName(g))}</div><div class="list">${xs.map(x=>{const dis=inPlan.has(x.id);
+    return `<button class="it" data-act="swap-pick" data-ex="${x.id}" ${dis?"disabled":""}>${thumb(x.id)}<span class="grow"><b>${esc(x.n)}</b><span class="meta">${dis?tr("inPlan"):tgtTxt(x)}</span></span><span class="chev" aria-hidden="true">›</span></button>`}).join("")}</div>`}).join("")}`}
+function vPlan(){const ds=planDays(),nx=planNextFn(),r=S.planRun;if(planView==null)planView=r?r.d:nx;const running=r&&r.d===planView,day=planDayEff(planView);
+  const s=active();
+  return `${planDoneToday()?doneCard():""}
+  <div class="planpills">${ds.map((d,i)=>{const ok=i<nx&&!(r&&r.d===i);return `<button class="${i===planView?"on":""} ${ok?"ok":""}" data-act="plan-view" data-d="${i}">${ok?"✓":tr("day",{n:i+1})}</button>`}).join("")}</div>
+  <p class="plansub">${tr("day",{n:planView+1})}</p><h1 class="plantitle">${esc(dayName(day))}</h1>
+  <div class="planinfo">⚡ ${tr("planSub",{n:day.ex.length})}</div>
+  <div class="planlist">${day.ex.map((id,i)=>{const ex=exById(id),c=cfgOf(day,id),st=running?planSt(id):null,now=running&&i===r.idx&&!st;const sr=c?tr("setsReps",{s:c.sets,r:repTxt(Object.assign({},ex,c))}):tr("setsReps",{s:ex.sets,r:repTxt(ex)});
+    const it=running&&s&&s.items.find(x=>x.ex===id),lockSw=!!st||!!(it&&it.sets.some(x=>x.done));
+    return `<div class="plancardex ${st?"st-"+st:""}" data-act="x-info" data-ex="${id}" role="button" tabindex="0">${thumb(id,"lg")}<span class="pnum">${i+1}</span><span class="pname">${esc(ex.n)}</span>
+     <button class="pswap" data-act="swap-slot" data-i="${i}" ${lockSw?"disabled":""} aria-label="${tr("swapTitle")}">${tr("swapShort")}</button>
+     <span class="ptgt">${sr}${c?` · ⏱ ${c.rt}`:""}${noteTxt(c)?`<br><small>💡 ${esc(noteTxt(c))}</small>`:""}</span>${st||now?`<span class="pst ${st||"now"}">${st==="done"?tr("stDone"):st==="skip"?tr("stSkip"):tr("stNow")}</span>`:""}</div>`}).join("")}</div>
+  <div class="planstart"><button class="btn primary block" data-act="${running?"plan-continue":"plan-start"}" data-d="${planView}">${running?tr("contPlan",{a:r.idx+1,n:day.ex.length}):tr("startDay",{n:planView+1})}</button></div>`}
+function swapApply(c,to){const r=S.planRun;let sw;
+  if(r&&r.d===c.d){r.swap=r.swap||{};sw=r.swap}else{if(!S.planPre||S.planPre.d!==c.d)S.planPre={d:c.d,swap:{}};sw=S.planPre.swap}
+  const key=Object.keys(sw).find(k=>sw[k]===c.from)||c.from;if(key===to)delete sw[key];else sw[key]=to;
+  if(r&&r.d===c.d){const s=active();if(s){s.items=s.items.filter(x=>x.ex!==c.from);if(!s.items.length)S.sessions=S.sessions.filter(x=>x!==s)}delete drafts[c.from]}}
 
 /* ---------- Arranque ---------- */
 S=load();
