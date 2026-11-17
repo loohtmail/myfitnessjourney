@@ -567,6 +567,22 @@ body.locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 .pswap{position:absolute;right:12px;top:12px;z-index:2;border:0;border-radius:999px;padding:7px 12px;font-weight:800;font-size:.84rem;background:rgba(255,255,255,.92);color:var(--accent);box-shadow:0 4px 12px rgba(0,0,0,.18);cursor:pointer}
 .pswap:disabled{opacity:.5;cursor:default}
 .pname{right:110px}
+
+.cheer{font-weight:700;font-size:1.05rem;margin:4px 0 0!important}
+.sumgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 4px}
+.sumgrid>div{background:var(--grad);color:#fff;border-radius:18px;padding:10px 4px}
+.sumgrid b{display:block;font-family:"Fredoka",Arial,sans-serif;font-size:1.6rem;line-height:1.1}
+.sumgrid span{font-size:.74rem;font-weight:700;opacity:.95}
+.sumh{text-align:left;margin:14px 0 6px}
+.sumlist{text-align:left;max-height:none}
+.sumlist .it .th{width:48px;height:48px}
+.congrats p{margin-bottom:0}
+.planpill{cursor:pointer;font-weight:800}
+.pn{width:24px;height:24px;border-radius:50%;background:var(--surface2);color:var(--accent);display:grid;place-items:center;font-weight:800;font-size:.8rem;flex:none}
+.list>.it.cur{background:color-mix(in srgb,var(--accent) 10%,var(--surface))}
+.pst2{font-size:.76rem;font-weight:800;border-radius:999px;padding:4px 9px;background:var(--surface2);color:var(--muted);white-space:nowrap}
+.pst2.done{background:var(--ok);color:#fff}.pst2.skip{background:#8c7d88;color:#fff}.pst2.now{background:var(--grad);color:#fff}
+.donecard{cursor:pointer}
 </style>
 
 </head>
@@ -593,7 +609,7 @@ body.locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 // En la versión de GitHub para el iPhone, cambia a false: así se incrustan los vídeos de YouTube.
 const IS_DEMO=false;
 const SEED_DEMO=false; // datos de ejemplo la primera vez (se borran en Ajustes)
-const APP_VERSION="1.31";
+const APP_VERSION="1.33";
 let listScroll=null;
 const APP_DATE="15 nov 2026";
 const KEY="gym-app-v3";
@@ -1567,6 +1583,9 @@ document.addEventListener("click",async e=>{
     else{curEx=null;planView=c.d;persist();render();requestAnimationFrame(()=>scrollTo(0,c.y||0))}
     toast(tr("swapped"));break}
   case "reset-body":if(confirm(tr("resetBodyQ"))){S.body=[];persist();closeSheet();render();toast(tr("resetBodyOk"))}break;
+  case "plan-list":openSheet(sPlanList);break;
+  case "plan-jump":{const r=S.planRun;if(!r)break;const day=planDayEff(r.d),i=+b.dataset.i;closeSheet();r.idx=i;curEx=day.ex[i];persist();render();scrollTo(0,0);break}
+  case "plan-summary":if(S.planDone){openSheet(sCongrats);$("#sheet .sheet").classList.add("modal")}break;
   case "plan-start":planStart(+b.dataset.d);break;
   case "plan-continue":{const r=S.planRun;if(!r)break;const day=planDayEff(r.d);tab="plan";planView=r.d;curEx=day.ex[r.idx];render();scrollTo(0,0);break}
   case "plan-view":planView=+b.dataset.d;render();break;
@@ -2173,7 +2192,7 @@ function planResumeCard(){const r=S.planRun;if(!r)return "";const day=planDays()
   return `<button class="resumecard" data-act="plan-continue"><span class="grow">${tr("planOn",{a:r.idx+1,n:day.ex.length})}</span><b>${tr("backPlan")}</b></button>`}
 function planDoneToday(){return S.planDone&&S.planDone.date===isoDate(Date.now())&&!S.planRun}
 function doneCard(){const pd=S.planDone,day=planDays()[pd.d],nx=planDays()[planNext()];
-  return `<div class="donecard"><div class="confetti">🎉✨💖✨🎉</div><h2>${tr("doneTitle")}</h2><p class="donebig">${tr("doneTxt")}</p>
+  return `<div class="donecard" data-act="plan-summary" role="button" tabindex="0"><div class="confetti">🎉✨💖✨🎉</div><h2>${tr("doneTitle")}</h2><p class="donebig">${tr("doneTxt")}</p>
    <p class="donesub">${tr(pd.n===1?"doneSub1":"doneSub",{d:day?esc(dayName(day)):"",n:pd.n})}${pd.k?tr(pd.k===1?"doneSkip1":"doneSkip",{k:pd.k}):""}</p>
    ${day?`<div class="planthumbs center">${(pd.ex||day.ex).map(id=>{const v=(pd.st||{})[id];return `<span class="${v==="done"?"done":v==="skip"?"skip":""}">${thumb(id)}</span>`}).join("")}</div>`:""}
    ${nx?`<p class="donenext">${tr("nextDay",{d:esc(dayName(nx))})}</p>`:""}</div>`}
@@ -2409,6 +2428,54 @@ function swapApply(c,to){const r=S.planRun;let sw;
   const key=Object.keys(sw).find(k=>sw[k]===c.from)||c.from;if(key===to)delete sw[key];else sw[key]=to;
   if(r&&r.d===c.d){const s=active();if(s){s.items=s.items.filter(x=>x.ex!==c.from);if(!s.items.length)S.sessions=S.sessions.filter(x=>x!==s)}delete drafts[c.from]}}
 
+/* ================== Resumen al completar el plan + lista del plan ================== */
+Object.assign(TR.es,{sumEx:"Ejercicios",sumKg:"Kg levantados",sumSets:"Series",sumList:"Lo que has hecho",planListT:"Ejercicios del plan",stPend:"Pendiente",
+ cheer:["¡Lo has bordado! Cada serie de hoy te acerca a tus objetivos 💪","Constancia de campeona. Hoy has cumplido, y eso es lo que más cuenta ✨","¡Qué entreno! Tu yo de dentro de unos meses te lo va a agradecer 💖","Plan completado. Descansa, bebe agua y siéntete muy orgullosa 🌸"]});
+Object.assign(TR.en,{sumEx:"Exercises",sumKg:"Kg lifted",sumSets:"Sets",sumList:"What you did",planListT:"Plan exercises",stPend:"To do",
+ cheer:["You nailed it! Every set today brings you closer to your goals 💪","Champion consistency. You showed up today, and that's what counts most ✨","What a workout! Future you is going to thank you for this 💖","Plan complete. Rest, drink some water and be really proud of yourself 🌸"]});
+Object.assign(TR.zh,{sumEx:"练习",sumKg:"举起总公斤",sumSets:"组数",sumList:"你完成的练习",planListT:"计划中的练习",stPend:"待完成",
+ cheer:["太棒了！今天的每一组都让你离目标更近一步 💪","冠军般的坚持。今天你做到了，这才是最重要的 ✨","好一场训练！几个月后的你一定会感谢现在的自己 💖","计划完成！好好休息，多喝水，为自己骄傲吧 🌸"]});
+function planSummaryData(pd){const ids=pd.ex||(planDays()[pd.d]||{}).ex||[],sets={};
+  for(const s of S.sessions){if(isoDate(s.start)!==pd.date)continue;for(const it of s.items){if(!ids.includes(it.ex))continue;(sets[it.ex]=sets[it.ex]||[]).push(...it.sets.filter(x=>x.done&&num(x.reps)>0))}}
+  let kg=0,ns=0,ne=0;for(const id of ids){const v=sets[id]||[];if(v.length)ne++;ns+=v.length;for(const x of v)kg+=num(x.kg)*num(x.reps)}
+  return {ids,sets,kg,ns,ne}}
+function sCongrats(){const pd=S.planDone;if(!pd)return "";const day=planDays()[pd.d],D=planSummaryData(pd),ch=tr("cheer"),msg=ch[(Math.floor(Date.now()/DAY)+D.ns)%ch.length];
+  const big=n=>n>=1e4?Math.round(n/1e3)+"K":fmt(Math.round(n));
+  return `<div class="modal-body congrats"><div class="confetti">🎉✨💖✨🎉</div><h1>${tr("congrats")}</h1>
+   <p class="cheer">${esc(msg)}</p>
+   ${day?`<p class="small muted" style="margin-top:4px">${tr("day",{n:pd.d+1})} · ${esc(dayName(day))}</p>`:""}
+   <div class="sumgrid"><div><b>${D.ne}/${D.ids.length}</b><span>${tr("sumEx")}</span></div><div><b>${big(D.kg)}</b><span>${tr("sumKg")}</span></div><div><b>${D.ns}</b><span>${tr("sumSets")}</span></div></div>
+   <h3 class="sumh">${tr("sumList")}</h3>
+   <div class="list sumlist">${D.ids.map(id=>{const ex=exById(id),v=D.sets[id]||[];return `<div class="it">${thumb(id)}<span class="grow"><b>${esc(ex.n)}</b><span class="meta">${v.length?v.map(x=>setTxt(ex,x)).join(", "):((pd.st||{})[id]==="skip"?tr("stSkip"):"–")}</span></span>${v.length?`<span class="donebadge">✓</span>`:""}</div>`}).join("")}</div>
+   <button class="btn primary block" style="margin-top:14px" data-act="close">${tr("great")}</button></div>`}
+function planBar(exId){const pc=planCtx(exId);return pc?`<button class="pill planpill" data-act="plan-list" aria-label="${tr("planListT")}">${tr("exOf",{a:pc.i+1,n:pc.n})} ▾</button>`:""}
+function sPlanList(){const r=S.planRun;if(!r)return "";const day=planDayEff(r.d),s=active();
+  return `<div class="sheet-head"><div><h1>${tr("planListT")}</h1><p class="muted">${tr("day",{n:r.d+1})} · ${esc(dayName(day))}</p></div><button class="iconbtn" data-act="close" aria-label="${tr("close")}">✕</button></div>
+  <div class="list">${day.ex.map((id,i)=>{const ex=exById(id),st=planSt(id),now=id===curEx,it=s&&s.items.find(x=>x.ex===id),c=cfgOf(day,id),d=it?it.sets.filter(x=>x.done).length:0;
+    const lbl=st==="done"?`<span class="pst2 done">${tr("stDone")}</span>`:st==="skip"?`<span class="pst2 skip">${tr("stSkip")}</span>`:now?`<span class="pst2 now">${tr("stNow")}</span>`:`<span class="pst2">${d?d+"/"+(c?c.sets:ex.sets):tr("stPend")}</span>`;
+    return `<button class="it ${now?"cur":""}" data-act="plan-jump" data-i="${i}"><span class="pn">${i+1}</span>${thumb(id)}<span class="grow"><b>${esc(ex.n)}</b><span class="meta">${c?tr("setsReps",{s:c.sets,r:repTxt(Object.assign({},ex,c))}):tgtTxt(ex)}</span></span>${lbl}</button>`}).join("")}</div>`}
+
+/* ---- Siguiente ejercicio = el primero que quede pendiente (permite saltar de orden) ---- */
+function nextPending(pc){const st=S.planRun&&S.planRun.st||{},ids=pc.day.ex;for(let i=pc.i+1;i<ids.length;i++)if(!st[ids[i]])return i;for(let i=0;i<pc.i;i++)if(!st[ids[i]])return i;return -1}
+function planAdvance(pc){planMark(pc.day.ex[pc.i],"done");const nx=nextPending(pc);if(nx>=0){planGoTo(pc,nx);toast(tr("nextUp",{x:exById(curEx).n}))}else planFinish(pc)}
+function planSkipCurrent(pc){planMark(pc.day.ex[pc.i],"skip");const nx=nextPending(pc);if(nx>=0)planGoTo(pc,nx);else planFinish(pc)}
+function planNextCard(exId){const pc=planCtx(exId);if(!pc)return "";const ni=nextPending(pc);if(ni<0)return "";const nid=pc.day.ex[ni],nx=exById(nid),c=cfgOf(pc.day,nid);
+  return `<button class="nextcard" data-act="plan-next">${thumb(nid)}<span class="grow"><span class="small muted">${tr("nextEx")}</span><b>${esc(nx.n)}</b><span class="small muted">${c?tr("setsReps",{s:c.sets,r:repTxt(Object.assign({},nx,c))}):tr("setsReps",{s:nx.sets,r:repTxt(nx)})}</span></span><span class="chev">›</span></button>`}
+function sSave(){const s=active(),st=sessStats(s),pc=planCtx(curEx);
+  if(pc){const ni=nextPending(pc),last=ni<0,it=s&&s.items.find(x=>x.ex===curEx),has=it&&it.sets.some(x=>x.done);
+    return `<div class="modal-body"><div class="modal-ico">💪</div><h1>${tr("planSaveQ")}</h1>
+    <p class="muted">${last?tr("planSaveLast"):tr("planSaveNext",{x:exById(pc.day.ex[ni]).n})}</p>
+    <button class="btn primary block" data-act="x-save-yes">${has?(last?tr("planYesEnd"):tr("planYesNext")):tr("skipEx")}</button>
+    <button class="btn ghost block" style="margin-top:8px" data-act="close">${tr("noBack")}</button></div>`}
+  return `<div class="modal-body"><div class="modal-ico">💖</div><h1>${tr("saveQ")}</h1>
+  <p class="muted">${st.n?(st.n===1?tr("save1"):tr("saveN",{n:st.n})):tr("save0")}</p>
+  <button class="btn primary block" data-act="x-save-yes">${st.n?tr("saveYes"):tr("exitNo")}</button>
+  <button class="btn ghost block" style="margin-top:8px" data-act="close">${tr("noBack")}</button></div>`}
+
+/* ---- "Ejercicio" en vez de "entreno" en los botones ---- */
+Object.assign(TR.es,{startW:"▶ Empezar ejercicio",endW:"■ Terminar ejercicio",lockMsg:"🔒 Pulsa <b>Empezar ejercicio</b> para apuntar tus series",allDone:"¡Ejercicio completado! 🎉 Pulsa Terminar ejercicio.",saveQ:"¿Seguro que has terminado el ejercicio?",addW:"➕ Añadir ejercicio",saved:"Ejercicio guardado 💖"});
+Object.assign(TR.en,{startW:"▶ Start exercise",endW:"■ Finish exercise",lockMsg:"🔒 Tap <b>Start exercise</b> to log your sets",allDone:"Exercise complete! 🎉 Tap Finish exercise.",saveQ:"Are you sure you've finished this exercise?",addW:"➕ Add exercise",saved:"Exercise saved 💖"});
+Object.assign(TR.zh,{startW:"▶ 开始练习",endW:"■ 结束练习",lockMsg:"🔒 点击<b>开始练习</b>来记录你的组数",allDone:"练习完成！🎉 点击结束练习。",saveQ:"确定已经完成这个练习了吗？",addW:"➕ 加入练习",saved:"练习已保存 💖"});
 /* ---------- Arranque ---------- */
 S=load();
 if(!S){S=blank();persist()}
